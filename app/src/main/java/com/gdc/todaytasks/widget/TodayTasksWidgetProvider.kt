@@ -37,7 +37,12 @@ class TodayTasksWidgetProvider : AppWidgetProvider() {
 
         suspend fun refresh(context: Context) {
             val database = AppDatabase.getInstance(context)
-            val repository = TaskRepository(database, database.taskDao(), database.recurrenceDao())
+            val repository = TaskRepository(
+                database,
+                database.taskDao(),
+                database.recurrenceDao(),
+                database.historyGroupDao()
+            )
             val today = LocalDate.now()
             repository.prepareDay(today)
             val tasks = database.taskDao().currentIncompleteTasks(today.toString(), taskViews.size)

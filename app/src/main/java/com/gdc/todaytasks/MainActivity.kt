@@ -30,6 +30,17 @@ class MainActivity : ComponentActivity() {
     private val notificationsPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { viewModel.refreshDay() }
+    private val backgroundPicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            viewModel.setBackgroundUri(uri.toString())
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,7 +53,12 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             TodayTasksTheme {
-                TodayTasksApp(viewModel, editorRequest, ::pinWidget)
+                TodayTasksApp(
+                    viewModel = viewModel,
+                    editorRequest = editorRequest,
+                    onPinWidget = ::pinWidget,
+                    onPickBackground = ::pickBackground
+                )
             }
         }
     }
@@ -69,6 +85,10 @@ class MainActivity : ComponentActivity() {
                 null
             )
         }
+    }
+
+    private fun pickBackground() {
+        backgroundPicker.launch(arrayOf("image/*"))
     }
 
     companion object {

@@ -19,7 +19,12 @@ class DayChangeReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val database = AppDatabase.getInstance(context)
-                val repository = TaskRepository(database, database.taskDao(), database.recurrenceDao())
+                val repository = TaskRepository(
+                    database,
+                    database.taskDao(),
+                    database.recurrenceDao(),
+                    database.historyGroupDao()
+                )
                 val today = LocalDate.now()
                 repository.prepareDay(today)
                 val count = repository.observeIncompleteCount(today).first()

@@ -1,5 +1,8 @@
 package com.gdc.todaytasks.ui
 
+import android.graphics.BitmapFactory
+import androidx.core.net.toUri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
@@ -25,14 +28,19 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -47,12 +55,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,18 +75,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gdc.todaytasks.data.HistoryGroupEntity
 import com.gdc.todaytasks.data.RecurrenceDraft
 import com.gdc.todaytasks.data.RecurrenceKind
 import com.gdc.todaytasks.data.RecurrenceRules
 import com.gdc.todaytasks.data.RecurrenceTemplateEntity
 import com.gdc.todaytasks.data.TaskDraft
 import com.gdc.todaytasks.data.TaskEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
@@ -88,23 +103,31 @@ import java.util.Locale
 
 private enum class Destination(val title: String) { TODAY("今天"), FUTURE("未来"), HISTORY("历史") }
 
+private val fitnessOptions = listOf("练胸", "练背", "练肩", "练腿", "练腹")
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodayTasksApp(
     viewModel: TaskViewModel,
     editorRequest: Int = 0,
-    onPinWidget: () -> Unit = {}
+    onPinWidget: () -> Unit = {},
+    onPickBackground: () -> Unit = {}
 ) {
     val today by viewModel.today.collectAsStateWithLifecycle()
     val todayTasks by viewModel.todayTasks.collectAsStateWithLifecycle()
     val futureTasks by viewModel.futureTasks.collectAsStateWithLifecycle()
     val historyTasks by viewModel.historyTasks.collectAsStateWithLifecycle()
+    val historyGroups by viewModel.historyGroups.collectAsStateWithLifecycle()
     val incompleteCount by viewModel.incompleteCount.collectAsStateWithLifecycle()
+    val backgroundUri by viewModel.backgroundUri.collectAsStateWithLifecycle()
     val snackbarHost = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var destination by remember { mutableStateOf(Destination.TODAY) }
     var editorTask by remember { mutableStateOf<TaskEntity?>(null) }
     var editorTemplate by remember { mutableStateOf<RecurrenceTemplateEntity?>(null) }
     var showEditor by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showGroupEditor by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.deleted.collect { task ->
@@ -126,69 +149,94 @@ fun TodayTasksApp(
         if (editorRequest > 0) openNew()
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHost) },
-        bottomBar = {
-            NavigationBar {
-                Destination.entries.forEach { item ->
-                    val icon = when (item) {
-                        Destination.TODAY -> Icons.Default.CheckCircle
-                        Destination.FUTURE -> Icons.Default.Event
-                        Destination.HISTORY -> Icons.Default.History
+    Box(Modifier.fillMaxSize()) {
+        BackgroundImage(backgroundUri)
+        Scaffold(
+            containerColor = Color.Transparent,
+            snackbarHost = { SnackbarHost(snackbarHost) },
+            topBar = {
+                TopAppBar(
+                    title = { Text("今日事项") },
+                    actions = {
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Default.Settings, contentDescription = "设置")
+                        }
                     }
-                    NavigationBarItem(
-                        selected = destination == item,
-                        onClick = { destination = item },
-                        icon = { Icon(icon, contentDescription = item.title) },
-                        label = { Text(item.title) }
+                )
+            },
+            bottomBar = {
+                NavigationBar {
+                    Destination.entries.forEach { item ->
+                        val icon = when (item) {
+                            Destination.TODAY -> Icons.Default.CheckCircle
+                            Destination.FUTURE -> Icons.Default.Event
+                            Destination.HISTORY -> Icons.Default.History
+                        }
+                        NavigationBarItem(
+                            selected = destination == item,
+                            onClick = { destination = item },
+                            icon = { Icon(icon, contentDescription = item.title) },
+                            label = { Text(item.title) }
+                        )
+                    }
+                }
+            },
+            floatingActionButton = {
+                if (destination != Destination.HISTORY) {
+                    ExtendedFloatingActionButton(
+                        onClick = ::openNew,
+                        icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                        text = { Text("添加事项") }
                     )
                 }
             }
-        },
-        floatingActionButton = {
-            if (destination != Destination.HISTORY) {
-                ExtendedFloatingActionButton(
-                    onClick = ::openNew,
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("添加事项") }
+        ) { padding ->
+            when (destination) {
+                Destination.TODAY -> TodayScreen(
+                    modifier = Modifier.padding(padding),
+                    today = today,
+                    tasks = todayTasks,
+                    incompleteCount = incompleteCount,
+                    onPinWidget = onPinWidget,
+                    onToggle = viewModel::toggleComplete,
+                    onStar = viewModel::toggleStar,
+                    onDelete = viewModel::delete,
+                    onEdit = { task ->
+                        scope.launch {
+                            editorTask = task
+                            editorTemplate = viewModel.templateFor(task)
+                            showEditor = true
+                        }
+                    },
+                    onMove = viewModel::moveTask
+                )
+
+                Destination.FUTURE -> FutureScreen(
+                    modifier = Modifier.padding(padding),
+                    tasks = futureTasks,
+                    onToggle = viewModel::toggleComplete,
+                    onStar = viewModel::toggleStar,
+                    onDelete = viewModel::delete,
+                    onEdit = { task ->
+                        scope.launch {
+                            editorTask = task
+                            editorTemplate = viewModel.templateFor(task)
+                            showEditor = true
+                        }
+                    }
+                )
+
+                Destination.HISTORY -> HistoryScreen(
+                    modifier = Modifier.padding(padding),
+                    tasks = historyTasks,
+                    groups = historyGroups,
+                    onAddGroup = { showGroupEditor = true },
+                    onCreateGroupFromTask = { task ->
+                        viewModel.createHistoryGroup(task.title, task.title)
+                    },
+                    onAssignGroup = viewModel::assignToHistoryGroup
                 )
             }
-        }
-    ) { padding ->
-        when (destination) {
-            Destination.TODAY -> TodayScreen(
-                modifier = Modifier.padding(padding),
-                today = today,
-                tasks = todayTasks,
-                incompleteCount = incompleteCount,
-                onPinWidget = onPinWidget,
-                onToggle = viewModel::toggleComplete,
-                onStar = viewModel::toggleStar,
-                onDelete = viewModel::delete,
-                onEdit = { task ->
-                    scope.launch {
-                        editorTask = task
-                        editorTemplate = viewModel.templateFor(task)
-                        showEditor = true
-                    }
-                },
-                onMove = viewModel::moveTask
-            )
-            Destination.FUTURE -> FutureScreen(
-                modifier = Modifier.padding(padding),
-                tasks = futureTasks,
-                onToggle = viewModel::toggleComplete,
-                onStar = viewModel::toggleStar,
-                onDelete = viewModel::delete,
-                onEdit = { task ->
-                    scope.launch {
-                        editorTask = task
-                        editorTemplate = viewModel.templateFor(task)
-                        showEditor = true
-                    }
-                }
-            )
-            Destination.HISTORY -> HistoryScreen(Modifier.padding(padding), historyTasks)
         }
     }
 
@@ -204,6 +252,52 @@ fun TodayTasksApp(
                 showEditor = false
             }
         )
+    }
+
+    if (showSettings) {
+        SettingsDialog(
+            hasBackground = backgroundUri != null,
+            onPickBackground = onPickBackground,
+            onClearBackground = { viewModel.setBackgroundUri(null) },
+            onDismiss = { showSettings = false }
+        )
+    }
+
+    if (showGroupEditor) {
+        HistoryGroupEditorDialog(
+            completedTitles = historyTasks.map { it.title }.distinct().sorted(),
+            onDismiss = { showGroupEditor = false },
+            onSave = { name, matchTitle ->
+                viewModel.createHistoryGroup(name, matchTitle)
+                showGroupEditor = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun BackgroundImage(uriString: String?) {
+    if (uriString == null) return
+    val context = LocalContext.current
+    var image by remember(uriString) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(uriString) {
+        image = withContext(Dispatchers.IO) {
+            runCatching {
+                context.contentResolver.openInputStream(uriString.toUri())?.use { stream ->
+                    BitmapFactory.decodeStream(stream)?.asImageBitmap()
+                }
+            }.getOrNull()
+        }
+    }
+    image?.let {
+        Image(
+            bitmap = it,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+            alpha = 0.22f
+        )
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background.copy(alpha = 0.72f)))
     }
 }
 
@@ -293,32 +387,108 @@ private fun FutureScreen(
 }
 
 @Composable
-private fun HistoryScreen(modifier: Modifier, tasks: List<TaskEntity>) {
-    val groups = tasks.groupBy {
+private fun HistoryScreen(
+    modifier: Modifier,
+    tasks: List<TaskEntity>,
+    groups: List<HistoryGroupEntity>,
+    onAddGroup: () -> Unit,
+    onCreateGroupFromTask: (TaskEntity) -> Unit,
+    onAssignGroup: (TaskEntity, Long) -> Unit
+) {
+    val dateGroups = tasks.groupBy {
         it.completedAt?.let { time -> Instant.ofEpochMilli(time).atZone(ZoneId.systemDefault()).toLocalDate() }
             ?: LocalDate.parse(it.scheduledDate)
     }
+    var assigningTask by remember { mutableStateOf<TaskEntity?>(null) }
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp, 20.dp, 16.dp, 32.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { Text("完成历史", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold) }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("完成历史", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                TextButton(onClick = onAddGroup) {
+                    Icon(Icons.Default.Folder, contentDescription = null, Modifier.size(18.dp))
+                    Text(" 新建分组")
+                }
+            }
+        }
+        item {
+            HistoryGroupsPanel(groups, tasks)
+        }
         if (tasks.isEmpty()) item { EmptyMessage("完成事项后，这里会保留你的记录。") }
-        groups.forEach { (date, group) ->
+        dateGroups.forEach { (date, group) ->
             item { SectionTitle(date.displayDate()) }
             items(group, key = { it.id }) { task ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                    Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-                        Text(
-                            task.title,
-                            Modifier.padding(start = 12.dp),
-                            textDecoration = TextDecoration.LineThrough,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                HistoryTaskCard(
+                    task = task,
+                    groupName = groups.firstOrNull { it.id == task.historyGroupId }?.name,
+                    hasGroups = groups.isNotEmpty(),
+                    onCreateGroup = { onCreateGroupFromTask(task) },
+                    onChooseGroup = { assigningTask = task }
+                )
+            }
+        }
+    }
+
+    assigningTask?.let { task ->
+        AssignGroupDialog(
+            task = task,
+            groups = groups,
+            onDismiss = { assigningTask = null },
+            onAssign = { groupId ->
+                onAssignGroup(task, groupId)
+                assigningTask = null
+            }
+        )
+    }
+}
+
+@Composable
+private fun HistoryGroupsPanel(groups: List<HistoryGroupEntity>, tasks: List<TaskEntity>) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("分组", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            if (groups.isEmpty()) {
+                Text("还没有分组。可以把“练胸”这类完成记录建成分组，以后同名事项完成后会自动归入。")
+            } else {
+                groups.forEach { group ->
+                    val count = tasks.count { it.historyGroupId == group.id }
+                    Text("${group.name}：$count 条（匹配：${group.matchTitle}）")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryTaskCard(
+    task: TaskEntity,
+    groupName: String?,
+    hasGroups: Boolean,
+    onCreateGroup: () -> Unit,
+    onChooseGroup: () -> Unit
+) {
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+                Text(
+                    task.title,
+                    Modifier.padding(start = 12.dp).weight(1f),
+                    textDecoration = TextDecoration.LineThrough,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (groupName != null) {
+                    AssistChip(onClick = onChooseGroup, label = { Text("分组：$groupName") })
+                } else if (hasGroups) {
+                    AssistChip(onClick = onChooseGroup, label = { Text("选择分组") })
+                }
+                AssistChip(onClick = onCreateGroup, label = { Text("按此名称建组") })
             }
         }
     }
@@ -435,74 +605,108 @@ private fun TaskEditorDialog(
         mutableStateOf(template?.weekdays?.let(RecurrenceRules::textToWeekdays) ?: setOf(date.dayOfWeek))
     }
     var choosingDate by remember { mutableStateOf(false) }
+    var fitnessMode by remember(existing?.id) { mutableStateOf(existing?.title in fitnessOptions) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (existing == null) "添加事项" else "编辑事项") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("事项标题") },
-                    singleLine = true
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    AssistChip(
-                        onClick = { choosingDate = true },
-                        label = { Text(date.displayDate()) },
-                        leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, Modifier.size(18.dp)) }
-                    )
-                    FilterChip(
-                        selected = starred,
-                        onClick = { starred = !starred },
-                        label = { Text("重要") },
-                        leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, Modifier.size(18.dp)) }
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                item {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("事项标题") },
+                        singleLine = true
                     )
                 }
-                HorizontalDivider()
-                FilterChip(
-                    selected = repeats,
-                    onClick = { repeats = !repeats },
-                    label = { Text("重复事项") },
-                    leadingIcon = { Icon(Icons.Default.Repeat, contentDescription = null, Modifier.size(18.dp)) }
-                )
-                if (repeats) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf(
-                            RecurrenceKind.FIXED_DAILY to "每天",
-                            RecurrenceKind.FIXED_WEEKLY to "每周",
-                            RecurrenceKind.ROLLING_DAYS to "完成后 N 天",
-                            RecurrenceKind.ROLLING_WEEKS to "完成后 N 周"
-                        ).forEach { (option, label) ->
-                            FilterChip(selected = kind == option, onClick = { kind = option }, label = { Text(label) })
-                        }
-                    }
-                    if (kind == RecurrenceKind.FIXED_WEEKLY) {
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            DayOfWeek.entries.forEach { day ->
+                item {
+                    FilterChip(
+                        selected = fitnessMode,
+                        onClick = { fitnessMode = !fitnessMode },
+                        label = { Text("健身事项") },
+                        leadingIcon = { Icon(Icons.Default.FitnessCenter, contentDescription = null, Modifier.size(18.dp)) }
+                    )
+                }
+                if (fitnessMode) {
+                    item {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            fitnessOptions.forEach { option ->
                                 FilterChip(
-                                    selected = day in weekdays,
-                                    onClick = {
-                                        weekdays = if (day in weekdays && weekdays.size > 1) weekdays - day else weekdays + day
-                                    },
-                                    label = { Text(day.shortName()) }
+                                    selected = title == option,
+                                    onClick = { title = option },
+                                    label = { Text(option) }
                                 )
                             }
                         }
                     }
+                }
+                item {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AssistChip(
+                            onClick = { choosingDate = true },
+                            label = { Text(date.displayDate()) },
+                            leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, Modifier.size(18.dp)) }
+                        )
+                        FilterChip(
+                            selected = starred,
+                            onClick = { starred = !starred },
+                            label = { Text("重要") },
+                            leadingIcon = { Icon(Icons.Default.Star, contentDescription = null, Modifier.size(18.dp)) }
+                        )
+                    }
+                }
+                item { HorizontalDivider() }
+                item {
+                    FilterChip(
+                        selected = repeats,
+                        onClick = { repeats = !repeats },
+                        label = { Text("重复事项") },
+                        leadingIcon = { Icon(Icons.Default.Repeat, contentDescription = null, Modifier.size(18.dp)) }
+                    )
+                }
+                if (repeats) {
+                    item {
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf(
+                                RecurrenceKind.FIXED_DAILY to "每天",
+                                RecurrenceKind.FIXED_WEEKLY to "每周",
+                                RecurrenceKind.ROLLING_DAYS to "完成后 N 天",
+                                RecurrenceKind.ROLLING_WEEKS to "完成后 N 周"
+                            ).forEach { (option, label) ->
+                                FilterChip(selected = kind == option, onClick = { kind = option }, label = { Text(label) })
+                            }
+                        }
+                    }
+                    if (kind == RecurrenceKind.FIXED_WEEKLY) {
+                        item {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                DayOfWeek.entries.forEach { day ->
+                                    FilterChip(
+                                        selected = day in weekdays,
+                                        onClick = {
+                                            weekdays = if (day in weekdays && weekdays.size > 1) weekdays - day else weekdays + day
+                                        },
+                                        label = { Text(day.shortName()) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                     if (kind == RecurrenceKind.ROLLING_DAYS || kind == RecurrenceKind.ROLLING_WEEKS) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("间隔 ")
-                            TextButton(onClick = { if (interval > 1) interval-- }) { Text("-") }
-                            Text("$interval", fontWeight = FontWeight.Bold)
-                            TextButton(onClick = { interval++ }) { Text("+") }
-                            Text(if (kind == RecurrenceKind.ROLLING_DAYS) " 天" else " 周")
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("间隔 ")
+                                TextButton(onClick = { if (interval > 1) interval-- }) { Text("-") }
+                                Text("$interval", fontWeight = FontWeight.Bold)
+                                TextButton(onClick = { interval++ }) { Text("+") }
+                                Text(if (kind == RecurrenceKind.ROLLING_DAYS) " 天" else " 周")
+                            }
                         }
                     }
                     if (existing != null && template != null) {
-                        TextButton(onClick = onStopRepeating) { Text("停止以后重复") }
+                        item { TextButton(onClick = onStopRepeating) { Text("停止以后重复") } }
                     }
                 }
             }
@@ -545,6 +749,110 @@ private fun TaskEditorDialog(
             dismissButton = { TextButton(onClick = { choosingDate = false }) { Text("取消") } }
         ) { DatePicker(state = state) }
     }
+}
+
+@Composable
+private fun SettingsDialog(
+    hasBackground: Boolean,
+    onPickBackground: () -> Unit,
+    onClearBackground: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("设置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("背景")
+                Button(onClick = onPickBackground) {
+                    Icon(Icons.Default.PhotoLibrary, contentDescription = null, Modifier.size(18.dp))
+                    Text("  从手机图片选择背景")
+                }
+                if (hasBackground) {
+                    TextButton(onClick = onClearBackground) { Text("恢复默认背景") }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("完成") } }
+    )
+}
+
+@Composable
+private fun HistoryGroupEditorDialog(
+    completedTitles: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var matchTitle by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新建历史分组") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("分组名称，例如：健身") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = matchTitle,
+                    onValueChange = { matchTitle = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("匹配事项名称，例如：练胸") },
+                    singleLine = true
+                )
+                if (completedTitles.isNotEmpty()) {
+                    Text("从已完成事项选择")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        completedTitles.take(12).forEach { title ->
+                            AssistChip(
+                                onClick = {
+                                    matchTitle = title
+                                    if (name.isBlank()) name = title
+                                },
+                                label = { Text(title) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = matchTitle.isNotBlank(),
+                onClick = { onSave(name.ifBlank { matchTitle }, matchTitle) }
+            ) { Text("保存") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } }
+    )
+}
+
+@Composable
+private fun AssignGroupDialog(
+    task: TaskEntity,
+    groups: List<HistoryGroupEntity>,
+    onDismiss: () -> Unit,
+    onAssign: (Long) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择分组") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("把“${task.title}”放入：")
+                groups.forEach { group ->
+                    AssistChip(
+                        onClick = { onAssign(group.id) },
+                        label = { Text("${group.name}（匹配：${group.matchTitle}）") }
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } }
+    )
 }
 
 private fun LocalDate.displayDate(): String =

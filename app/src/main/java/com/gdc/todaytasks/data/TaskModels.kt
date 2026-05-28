@@ -16,6 +16,11 @@ data class TaskDraft(
     val recurrence: RecurrenceDraft? = null
 )
 
+data class HistoryGroupDraft(
+    val name: String,
+    val matchTitle: String
+)
+
 object RecurrenceRules {
     fun isFixed(kind: RecurrenceKind): Boolean =
         kind == RecurrenceKind.FIXED_DAILY || kind == RecurrenceKind.FIXED_WEEKLY

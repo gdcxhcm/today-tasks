@@ -2,6 +2,8 @@ package com.gdc.todaytasks.di
 
 import android.content.Context
 import com.gdc.todaytasks.data.AppDatabase
+import com.gdc.todaytasks.data.AppPreferences
+import com.gdc.todaytasks.data.HistoryGroupDao
 import com.gdc.todaytasks.data.RecurrenceDao
 import com.gdc.todaytasks.data.TaskDao
 import dagger.Module
@@ -24,4 +26,11 @@ object AppModule {
 
     @Provides
     fun provideRecurrenceDao(database: AppDatabase): RecurrenceDao = database.recurrenceDao()
+
+    @Provides
+    fun provideHistoryGroupDao(database: AppDatabase): HistoryGroupDao = database.historyGroupDao()
+
+    @Provides
+    @Singleton
+    fun provideAppPreferences(@ApplicationContext context: Context): AppPreferences = AppPreferences(context)
 }

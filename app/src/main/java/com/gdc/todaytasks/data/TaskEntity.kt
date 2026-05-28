@@ -19,6 +19,7 @@ data class TaskEntity(
     val sortOrder: Long = 0,
     val isCarried: Boolean = false,
     val recurrenceTemplateId: Long? = null,
+    val historyGroupId: Long? = null,
     val occurrenceKey: String? = null,
     val generatedFromTaskId: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),

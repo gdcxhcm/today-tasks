@@ -10,11 +10,13 @@ import javax.inject.Singleton
 class TaskRepository @Inject constructor(
     private val database: AppDatabase,
     private val taskDao: TaskDao,
-    private val recurrenceDao: RecurrenceDao
+    private val recurrenceDao: RecurrenceDao,
+    private val historyGroupDao: HistoryGroupDao
 ) {
     fun observeToday(date: LocalDate): Flow<List<TaskEntity>> = taskDao.observeToday(date.toString())
     fun observeFuture(date: LocalDate): Flow<List<TaskEntity>> = taskDao.observeFuture(date.toString())
     fun observeHistory(): Flow<List<TaskEntity>> = taskDao.observeHistory()
+    fun observeHistoryGroups(): Flow<List<HistoryGroupEntity>> = historyGroupDao.observeGroups()
     fun observeIncompleteCount(date: LocalDate): Flow<Int> = taskDao.observeIncompleteCount(date.toString())
 
     suspend fun getTemplate(templateId: Long): RecurrenceTemplateEntity? = recurrenceDao.getById(templateId)
@@ -143,6 +145,7 @@ class TaskRepository @Inject constructor(
             task.copy(
                 isCompleted = completed,
                 completedAt = if (completed) System.currentTimeMillis() else null,
+                historyGroupId = if (completed) historyGroupDao.getByMatchTitle(task.title)?.id else task.historyGroupId,
                 updatedAt = System.currentTimeMillis()
             )
         )
@@ -184,6 +187,32 @@ class TaskRepository @Inject constructor(
         tasks.forEachIndexed { index, task ->
             taskDao.update(task.copy(sortOrder = index.toLong(), updatedAt = System.currentTimeMillis()))
         }
+    }
+
+    suspend fun createHistoryGroup(name: String, matchTitle: String) = database.withTransaction {
+        val cleanTitle = matchTitle.trim()
+        if (cleanTitle.isBlank()) return@withTransaction
+        val cleanName = name.trim().ifBlank { cleanTitle }
+        val now = System.currentTimeMillis()
+        val existing = historyGroupDao.getByMatchTitle(cleanTitle)
+        val groupId = if (existing == null) {
+            historyGroupDao.insert(
+                HistoryGroupEntity(
+                    name = cleanName,
+                    matchTitle = cleanTitle,
+                    createdAt = now,
+                    updatedAt = now
+                )
+            )
+        } else {
+            historyGroupDao.update(existing.copy(name = cleanName, updatedAt = now))
+            existing.id
+        }
+        taskDao.assignCompletedByTitle(cleanTitle, groupId, now)
+    }
+
+    suspend fun addTaskToHistoryGroup(taskId: Long, groupId: Long) {
+        taskDao.setHistoryGroup(taskId, groupId, System.currentTimeMillis())
     }
 
     private suspend fun generateFixedOccurrencesThrough(template: RecurrenceTemplateEntity, today: LocalDate) {

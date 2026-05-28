@@ -3,6 +3,7 @@ package com.gdc.todaytasks.ui
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.gdc.todaytasks.data.AppPreferences
 import com.gdc.todaytasks.data.RecurrenceTemplateEntity
 import com.gdc.todaytasks.data.TaskDraft
 import com.gdc.todaytasks.data.TaskEntity
@@ -28,6 +29,7 @@ class TaskViewModel @Inject constructor(
     private val repository: TaskRepository,
     private val notificationController: NotificationController,
     private val scheduler: DayChangeScheduler,
+    private val preferences: AppPreferences,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val selectedDate = MutableStateFlow(LocalDate.now())
@@ -41,8 +43,11 @@ class TaskViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val historyTasks = repository.observeHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val historyGroups = repository.observeHistoryGroups()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val incompleteCount = selectedDate.flatMapLatest(repository::observeIncompleteCount)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    val backgroundUri = preferences.backgroundUri
 
     init {
         refreshDay()
@@ -131,6 +136,22 @@ class TaskViewModel @Inject constructor(
         viewModelScope.launch {
             repository.reorder(reordered)
             TodayTasksWidgetProvider.refreshAsync(context)
+        }
+    }
+
+    fun setBackgroundUri(uri: String?) {
+        preferences.setBackgroundUri(uri)
+    }
+
+    fun createHistoryGroup(name: String, matchTitle: String) {
+        viewModelScope.launch {
+            repository.createHistoryGroup(name, matchTitle)
+        }
+    }
+
+    fun assignToHistoryGroup(task: TaskEntity, groupId: Long) {
+        viewModelScope.launch {
+            repository.addTaskToHistoryGroup(task.id, groupId)
         }
     }
 }

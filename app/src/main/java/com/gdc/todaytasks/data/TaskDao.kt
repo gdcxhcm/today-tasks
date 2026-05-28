@@ -19,6 +19,9 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isCompleted = 1 ORDER BY completedAt DESC, scheduledDate DESC")
     fun observeHistory(): Flow<List<TaskEntity>>
 
+    @Query("SELECT * FROM tasks WHERE historyGroupId = :groupId AND isCompleted = 1 ORDER BY completedAt DESC")
+    fun observeCompletedInGroup(groupId: Long): Flow<List<TaskEntity>>
+
     @Query("SELECT COUNT(*) FROM tasks WHERE scheduledDate = :date AND isCompleted = 0")
     fun observeIncompleteCount(date: String): Flow<Int>
 
@@ -48,4 +51,10 @@ interface TaskDao {
 
     @Query("UPDATE tasks SET scheduledDate = :today, isCarried = 1, updatedAt = :now WHERE scheduledDate < :today AND isCompleted = 0")
     suspend fun carryIncompleteInto(today: String, now: Long)
+
+    @Query("UPDATE tasks SET historyGroupId = :groupId, updatedAt = :now WHERE id = :taskId")
+    suspend fun setHistoryGroup(taskId: Long, groupId: Long?, now: Long)
+
+    @Query("UPDATE tasks SET historyGroupId = :groupId, updatedAt = :now WHERE isCompleted = 1 AND title = :title")
+    suspend fun assignCompletedByTitle(title: String, groupId: Long, now: Long)
 }
