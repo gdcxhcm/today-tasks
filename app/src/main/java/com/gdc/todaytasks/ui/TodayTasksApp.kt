@@ -57,6 +57,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -131,7 +132,12 @@ fun TodayTasksApp(
 
     LaunchedEffect(Unit) {
         viewModel.deleted.collect { task ->
-            if (snackbarHost.showSnackbar("已删除“${task.title}”", actionLabel = "撤销") ==
+            snackbarHost.currentSnackbarData?.dismiss()
+            if (snackbarHost.showSnackbar(
+                    message = "已删除“${task.title}”",
+                    actionLabel = "撤销",
+                    duration = SnackbarDuration.Short
+                ) ==
                 androidx.compose.material3.SnackbarResult.ActionPerformed
             ) {
                 viewModel.undoDelete(task)
