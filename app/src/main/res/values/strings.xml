@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">今日事项</string>
+    <string name="notification_channel_name">今日未完成事项</string>
+    <string name="notification_channel_description">在今天仍有未完成事项时显示静默提醒和桌面角标</string>
+    <string name="widget_name">今日事项</string>
+    <string name="widget_empty">今天没有待完成事项</string>
+    <string name="widget_add">新增</string>
+    <string name="widget_zero_count">0 件</string>
+</resources>
